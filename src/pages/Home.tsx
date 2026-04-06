@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, CheckCircle2, Upload, Timer } from 'lucide-react'
+import { ChevronRight, CheckCircle2, Upload } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { BottomNav } from '@/components/BottomNav'
 import { ProgressBar } from '@/components/ProgressBar'
@@ -58,19 +58,6 @@ export function Home() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {/* Simulado button — always visible */}
-            <button
-              onClick={() => navigate('/simulado')}
-              className="flex items-center gap-3 rounded-xl border-2 border-primary bg-primary/5 px-4 py-3 text-left hover:bg-primary/10 transition-all"
-            >
-              <Timer size={18} className="text-primary shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-primary">Fazer Simulado</p>
-                <p className="text-xs text-muted-foreground">Questões cronometradas sem gabarito — condição real de prova</p>
-              </div>
-              <ChevronRight size={16} className="text-primary shrink-0" />
-            </button>
-
             {/* Import button — admin only */}
             {isAdmin && (
               <button

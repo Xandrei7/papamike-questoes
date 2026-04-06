@@ -1,13 +1,13 @@
 import { NavLink } from 'react-router-dom'
-import { House, BookOpen, Heart, X, ChartColumn } from 'lucide-react'
+import { House, BookOpen, Timer, Heart, ChartColumn } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const tabs = [
   { to: '/', icon: House, label: 'Início', end: true },
   { to: '/disciplines', icon: BookOpen, label: 'Matérias' },
+  { to: '/simulado', icon: Timer, label: 'Simulado' },
   { to: '/favorites', icon: Heart, label: 'Favoritos' },
-  { to: '/errors', icon: X, label: 'Erros' },
-  { to: '/stats', icon: ChartColumn, label: 'Estatísticas' },
+  { to: '/stats', icon: ChartColumn, label: 'Stats' },
 ]
 
 export function BottomNav() {
@@ -21,14 +21,14 @@ export function BottomNav() {
             end={end}
             className={({ isActive }) =>
               cn(
-                'flex flex-col items-center gap-0.5 px-3 py-2 text-xs transition-colors',
+                'flex flex-col items-center gap-0.5 px-2 py-2 text-xs transition-colors',
                 isActive ? 'text-primary' : 'text-muted-foreground'
               )
             }
           >
             {({ isActive }) => (
               <>
-                <Icon size={22} fill={isActive ? 'currentColor' : 'none'} />
+                <Icon size={20} fill={isActive ? 'currentColor' : 'none'} />
                 <span>{label}</span>
               </>
             )}
