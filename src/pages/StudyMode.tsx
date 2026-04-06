@@ -23,6 +23,12 @@ export function StudyMode() {
   const [loading, setLoading] = useState(true)
   const [studyStarted, setStudyStarted] = useState(false)
 
+  // ── Controlled question state (lives here, NOT in QuestionCard) ──────────
+  // This is the definitive fix: state resets synchronously in the same
+  // event handler that changes the question, with no async timing issues.
+  const [selected, setSelected] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
+
   useEffect(() => {
     async function load() {
       if (mode === 'subject' && subjectId) {
@@ -53,19 +59,28 @@ export function StudyMode() {
   const answeredCount = allQuestions.filter(q => answeredIds.has(q.id)).length
   const hasProgress = answeredCount > 0
 
+  // Initialize selection state for a given question index
+  function initStateForIndex(index: number, qs: Question[]) {
+    const q = qs[index]
+    if (!q) return
+    const existing = answers.find(a => a.questionId === q.id)
+    setSelected(existing?.selectedAnswer ?? null)
+    setSubmitted(!!existing)
+  }
+
   function startStudy(selectedMode: 'sequential' | 'random', fromStart = false) {
     let qs = [...allQuestions]
-    if (selectedMode === 'random') {
-      qs = shuffle(qs)
-    }
+    if (selectedMode === 'random') qs = shuffle(qs)
     setQuestions(qs)
 
+    let startIndex = 0
     if (!fromStart && selectedMode === 'sequential') {
       const firstUnanswered = qs.findIndex(q => !answeredIds.has(q.id))
-      setCurrentIndex(firstUnanswered >= 0 ? firstUnanswered : 0)
-    } else {
-      setCurrentIndex(0)
+      startIndex = firstUnanswered >= 0 ? firstUnanswered : 0
     }
+
+    setCurrentIndex(startIndex)
+    initStateForIndex(startIndex, qs)
     setStudyStarted(true)
   }
 
@@ -73,11 +88,31 @@ export function StudyMode() {
     startStudy(selectedMode, true)
   }
 
-  const handleAnswer = useCallback((answer: UserAnswer) => {
-    recordAnswer(answer)
-  }, [recordAnswer])
+  // Navigate to a specific question index, resetting state synchronously
+  const goToIndex = useCallback((newIndex: number, qs: Question[]) => {
+    const q = qs[newIndex]
+    if (!q) return
+    const existing = answers.find(a => a.questionId === q.id)
+    // All three state updates are batched in one render by React 18
+    setCurrentIndex(newIndex)
+    setSelected(existing?.selectedAnswer ?? null)
+    setSubmitted(!!existing)
+  }, [answers])
 
-  function handleNext() {
+  const handleSubmit = useCallback(() => {
+    const q = questions[currentIndex]
+    if (!selected || !q || submitted) return
+    const answer: UserAnswer = {
+      questionId: q.id,
+      selectedAnswer: selected,
+      isCorrect: selected === q.correct_answer,
+      answeredAt: new Date().toISOString(),
+    }
+    recordAnswer(answer)
+    setSubmitted(true)
+  }, [selected, questions, currentIndex, submitted, recordAnswer])
+
+  const handleNext = useCallback(() => {
     if (currentIndex === questions.length - 1) {
       if (mode === 'subject' && subjectId) {
         navigate(`/study/${subjectId}/complete`)
@@ -85,17 +120,17 @@ export function StudyMode() {
         navigate('/')
       }
     } else {
-      setCurrentIndex(i => i + 1)
+      goToIndex(currentIndex + 1, questions)
     }
-  }
+  }, [currentIndex, questions, mode, subjectId, navigate, goToIndex])
 
-  function handlePrev() {
-    setCurrentIndex(i => Math.max(0, i - 1))
-  }
+  const handlePrev = useCallback(() => {
+    if (currentIndex > 0) goToIndex(currentIndex - 1, questions)
+  }, [currentIndex, questions, goToIndex])
 
-  function handleSkip() {
-    setCurrentIndex(i => Math.min(questions.length - 1, i + 1))
-  }
+  const handleSkip = useCallback(() => {
+    if (currentIndex < questions.length - 1) goToIndex(currentIndex + 1, questions)
+  }, [currentIndex, questions, goToIndex])
 
   const currentQuestion = questions[currentIndex]
 
@@ -148,7 +183,7 @@ export function StudyMode() {
                 <RotateCcw size={22} className="text-muted-foreground" />
                 <div>
                   <p className="font-medium text-muted-foreground">Começar do início</p>
-                  <p className="text-sm text-muted-foreground">Resetar progresso e reiniciar</p>
+                  <p className="text-sm text-muted-foreground">Resetar e reiniciar</p>
                 </div>
               </button>
             )}
@@ -171,12 +206,14 @@ export function StudyMode() {
       <Header title={title} showBack />
       <main className="mx-auto w-full max-w-lg flex-1 px-4 py-4 pb-8">
         <QuestionCard
-          key={currentQuestion.id}
+          key={currentQuestion.id ?? currentIndex}
           question={currentQuestion}
           questionNumber={currentIndex + 1}
           totalQuestions={questions.length}
-          existingAnswer={answers.find(a => a.questionId === currentQuestion.id)}
-          onAnswer={handleAnswer}
+          selected={selected}
+          submitted={submitted}
+          onSelect={setSelected}
+          onSubmit={handleSubmit}
           onNext={handleNext}
           onPrev={handlePrev}
           onSkip={handleSkip}

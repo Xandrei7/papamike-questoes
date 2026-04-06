@@ -5,14 +5,17 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useStudy } from '@/contexts/StudyContext'
 import { submitReport } from '@/lib/dataService'
 import { toast } from 'sonner'
-import type { Question, UserAnswer } from '@/types'
+import type { Question } from '@/types'
 
 interface QuestionCardProps {
   question: Question
   questionNumber: number
   totalQuestions: number
-  existingAnswer?: UserAnswer
-  onAnswer: (answer: UserAnswer) => void
+  // Controlled by parent — never derives state from these
+  selected: string | null
+  submitted: boolean
+  onSelect: (letter: string) => void
+  onSubmit: () => void
   onNext: () => void
   onPrev: () => void
   onSkip: () => void
@@ -24,8 +27,10 @@ export function QuestionCard({
   question,
   questionNumber,
   totalQuestions,
-  existingAnswer,
-  onAnswer,
+  selected,
+  submitted,
+  onSelect,
+  onSubmit,
   onNext,
   onPrev,
   onSkip,
@@ -35,48 +40,25 @@ export function QuestionCard({
   const { user } = useAuth()
   const { toggleFavorite, isFavorite } = useStudy()
 
-  const [selected, setSelected] = useState<string | null>(existingAnswer?.selectedAnswer ?? null)
-  const [submitted, setSubmitted] = useState(!!existingAnswer)
+  // Only UI state lives here — never selection or submission
   const [commentOpen, setCommentOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [reportText, setReportText] = useState('')
 
-  // Reset all state whenever the question changes.
-  // This is the definitive fix: even if React reuses the component instance
-  // (e.g., key prop not triggering remount), the state is always correct.
+  // Reset UI-only state when question changes
   useEffect(() => {
-    setSelected(existingAnswer?.selectedAnswer ?? null)
-    setSubmitted(!!existingAnswer)
     setCommentOpen(false)
     setReportOpen(false)
     setReportText('')
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [question.id])
 
-  const answered = submitted
   const isCorrect = selected === question.correct_answer
-
-  function handleSelect(letter: string) {
-    if (answered) return
-    setSelected(letter)
-  }
-
-  function handleSubmit() {
-    if (!selected || answered) return
-    setSubmitted(true)
-    onAnswer({
-      questionId: question.id,
-      selectedAnswer: selected,
-      isCorrect: selected === question.correct_answer,
-      answeredAt: new Date().toISOString(),
-    })
-  }
 
   async function handleReport() {
     if (!reportText.trim() || !user) return
     try {
       await submitReport(question.id, user.id, reportText.trim())
-      toast.success('Erro reportado! Obrigado pela contribuição.')
+      toast.success('Erro reportado!')
       setReportText('')
       setReportOpen(false)
     } catch {
@@ -91,19 +73,19 @@ export function QuestionCard({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Card Header */}
+      {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">Questão {questionNumber} de {totalQuestions}</span>
-          <span
-            className={cn(
-              'rounded-full px-2 py-0.5 text-xs font-medium',
-              question.type === 'true_false'
-                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                : 'bg-primary/10 text-primary'
-            )}
-          >
-            {question.type === 'true_false' ? 'C/E' : 'Múltipla escolha'}
+          <span className="text-sm text-muted-foreground">
+            Questão {questionNumber} de {totalQuestions}
+          </span>
+          <span className={cn(
+            'rounded-full px-2 py-0.5 text-xs font-medium',
+            question.type === 'true_false'
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+              : 'bg-primary/10 text-primary'
+          )}>
+            {question.type === 'true_false' ? 'Certo / Errado' : 'Múltipla escolha'}
           </span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -140,8 +122,18 @@ export function QuestionCard({
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setReportOpen(false)} className="text-sm text-muted-foreground hover:text-foreground">Cancelar</button>
-            <button onClick={handleReport} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">Enviar</button>
+            <button
+              onClick={() => setReportOpen(false)}
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleReport}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Enviar
+            </button>
           </div>
         </div>
       )}
@@ -158,16 +150,20 @@ export function QuestionCard({
           return (
             <button
               key={opt.letter}
-              onClick={() => handleSelect(opt.letter)}
-              disabled={answered}
+              onClick={() => { if (!submitted) onSelect(opt.letter) }}
+              disabled={submitted}
               className={cn(
                 'flex items-start gap-3 rounded-lg border px-4 py-3 text-left text-sm transition-colors',
                 question.type === 'true_false' && 'flex-1 justify-center',
-                !answered && !isSelected && 'border-border hover:border-primary hover:bg-primary/5',
-                !answered && isSelected && 'border-primary bg-primary/10',
-                answered && isCorrectOpt && 'border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400',
-                answered && isSelected && !isCorrectOpt && 'border-red-500 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400',
-                answered && !isSelected && !isCorrectOpt && 'opacity-40',
+                // Not answered yet
+                !submitted && !isSelected && 'border-border hover:border-primary hover:bg-primary/5',
+                !submitted && isSelected && 'border-primary bg-primary/10',
+                // Answered: correct option always green
+                submitted && isCorrectOpt && 'border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400',
+                // Answered: selected wrong option red
+                submitted && isSelected && !isCorrectOpt && 'border-red-500 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400',
+                // Answered: other wrong options faded
+                submitted && !isSelected && !isCorrectOpt && 'opacity-40',
               )}
             >
               {question.type !== 'true_false' && (
@@ -179,26 +175,30 @@ export function QuestionCard({
         })}
       </div>
 
-      {/* Feedback */}
-      {answered && (
+      {/* Feedback banner */}
+      {submitted && (
         <div className={cn(
           'rounded-lg p-3',
-          isCorrect ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
+          isCorrect
+            ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400'
+            : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
         )}>
           <p className="font-medium text-sm">
-            {isCorrect ? '✓ Resposta correta!' : `✗ Resposta incorreta — Correta: ${question.correct_answer}`}
+            {isCorrect
+              ? '✓ Resposta correta!'
+              : `✗ Resposta incorreta — Gabarito: ${question.correct_answer}`}
           </p>
         </div>
       )}
 
-      {/* Comment collapsible */}
-      {answered && question.comment && (
+      {/* Collapsible comment */}
+      {submitted && question.comment && (
         <div className="rounded-lg border border-border overflow-hidden">
           <button
             onClick={() => setCommentOpen(v => !v)}
             className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50"
           >
-            Ler comentário
+            Ver comentário
             {commentOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
           {commentOpen && (
@@ -231,14 +231,15 @@ export function QuestionCard({
             Anterior
           </button>
         )}
-        {!answered ? (
+
+        {!submitted ? (
           <>
             <button
-              onClick={handleSubmit}
+              onClick={onSubmit}
               disabled={!selected}
               className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
             >
-              Responder Questão
+              Responder questão
             </button>
             {!isLast && (
               <button

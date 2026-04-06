@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Heart } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { BottomNav } from '@/components/BottomNav'
@@ -13,14 +13,47 @@ export function Favorites() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [loading, setLoading] = useState(true)
 
+  const [selected, setSelected] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
+
   useEffect(() => {
     async function load() {
       const all = await getQuestions()
-      setQuestions(all.filter(q => favorites.includes(q.id)))
+      const favQs = all.filter(q => favorites.includes(q.id))
+      setQuestions(favQs)
+      // Init state for first question
+      if (favQs.length > 0) {
+        const existing = answers.find(a => a.questionId === favQs[0].id)
+        setSelected(existing?.selectedAnswer ?? null)
+        setSubmitted(!!existing)
+        setCurrentIndex(0)
+      }
       setLoading(false)
     }
     load()
-  }, [favorites])
+  }, [favorites]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const goToIndex = useCallback((newIndex: number) => {
+    const q = questions[newIndex]
+    if (!q) return
+    const existing = answers.find(a => a.questionId === q.id)
+    setCurrentIndex(newIndex)
+    setSelected(existing?.selectedAnswer ?? null)
+    setSubmitted(!!existing)
+  }, [questions, answers])
+
+  const handleSubmit = useCallback(() => {
+    const q = questions[currentIndex]
+    if (!selected || !q || submitted) return
+    const answer: UserAnswer = {
+      questionId: q.id,
+      selectedAnswer: selected,
+      isCorrect: selected === q.correct_answer,
+      answeredAt: new Date().toISOString(),
+    }
+    recordAnswer(answer)
+    setSubmitted(true)
+  }, [selected, questions, currentIndex, submitted, recordAnswer])
 
   const currentQuestion = questions[currentIndex]
 
@@ -36,19 +69,23 @@ export function Favorites() {
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <Heart size={48} className="text-muted-foreground/40" />
             <p className="font-medium">Nenhum favorito ainda</p>
-            <p className="text-sm text-muted-foreground">Toque no coração em qualquer questão para salvá-la aqui.</p>
+            <p className="text-sm text-muted-foreground">
+              Toque no coração em qualquer questão para salvá-la aqui.
+            </p>
           </div>
         ) : currentQuestion ? (
           <QuestionCard
-            key={currentQuestion.id}
+            key={currentQuestion.id ?? currentIndex}
             question={currentQuestion}
             questionNumber={currentIndex + 1}
             totalQuestions={questions.length}
-            existingAnswer={answers.find(a => a.questionId === currentQuestion.id)}
-            onAnswer={(answer: UserAnswer) => recordAnswer(answer)}
-            onNext={() => setCurrentIndex(i => Math.min(questions.length - 1, i + 1))}
-            onPrev={() => setCurrentIndex(i => Math.max(0, i - 1))}
-            onSkip={() => setCurrentIndex(i => Math.min(questions.length - 1, i + 1))}
+            selected={selected}
+            submitted={submitted}
+            onSelect={setSelected}
+            onSubmit={handleSubmit}
+            onNext={() => goToIndex(Math.min(questions.length - 1, currentIndex + 1))}
+            onPrev={() => goToIndex(Math.max(0, currentIndex - 1))}
+            onSkip={() => goToIndex(Math.min(questions.length - 1, currentIndex + 1))}
             isFirst={currentIndex === 0}
             isLast={currentIndex === questions.length - 1}
           />

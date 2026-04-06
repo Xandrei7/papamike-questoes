@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { XCircle, RotateCcw } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { BottomNav } from '@/components/BottomNav'
@@ -13,6 +13,10 @@ export function Errors() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [reviewing, setReviewing] = useState(false)
+
+  // Controlled state
+  const [selected, setSelected] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
 
   const wrongAnswers = getWrongAnswers()
 
@@ -29,12 +33,35 @@ export function Errors() {
       setLoading(false)
     }
     load()
-  }, [answers])
+  }, [answers]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function startReview() {
     setCurrentIndex(0)
+    // Start clean so the user can retry each wrong question
+    setSelected(null)
+    setSubmitted(false)
     setReviewing(true)
   }
+
+  const goToIndex = useCallback((newIndex: number) => {
+    setCurrentIndex(newIndex)
+    // In error review, always start each question clean for retrying
+    setSelected(null)
+    setSubmitted(false)
+  }, [])
+
+  const handleSubmit = useCallback(() => {
+    const q = questions[currentIndex]
+    if (!selected || !q || submitted) return
+    const answer: UserAnswer = {
+      questionId: q.id,
+      selectedAnswer: selected,
+      isCorrect: selected === q.correct_answer,
+      answeredAt: new Date().toISOString(),
+    }
+    recordAnswer(answer)
+    setSubmitted(true)
+  }, [selected, questions, currentIndex, submitted, recordAnswer])
 
   const currentQuestion = questions[currentIndex]
 
@@ -53,13 +80,19 @@ export function Errors() {
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <XCircle size={48} className="text-muted-foreground/40" />
             <p className="font-medium">Nenhum erro registrado!</p>
-            <p className="text-sm text-muted-foreground">Continue respondendo questões para ver seus erros aqui.</p>
+            <p className="text-sm text-muted-foreground">
+              Continue respondendo questões para ver seus erros aqui.
+            </p>
           </div>
         ) : !reviewing ? (
           <div className="flex flex-col gap-4">
             <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900/50 p-4">
-              <p className="font-medium text-red-700 dark:text-red-400">{questions.length} questões erradas</p>
-              <p className="text-sm text-red-600/70 dark:text-red-400/70 mt-0.5">Refaça as questões que você errou.</p>
+              <p className="font-medium text-red-700 dark:text-red-400">
+                {questions.length} questões erradas
+              </p>
+              <p className="text-sm text-red-600/70 dark:text-red-400/70 mt-0.5">
+                Refaça as questões que você errou.
+              </p>
             </div>
             <button
               onClick={startReview}
@@ -71,18 +104,20 @@ export function Errors() {
           </div>
         ) : currentQuestion ? (
           <QuestionCard
-            key={currentQuestion.id}
+            key={currentQuestion.id ?? currentIndex}
             question={currentQuestion}
             questionNumber={currentIndex + 1}
             totalQuestions={questions.length}
-            existingAnswer={answers.find(a => a.questionId === currentQuestion.id)}
-            onAnswer={(answer: UserAnswer) => recordAnswer(answer)}
+            selected={selected}
+            submitted={submitted}
+            onSelect={setSelected}
+            onSubmit={handleSubmit}
             onNext={() => {
               if (currentIndex === questions.length - 1) setReviewing(false)
-              else setCurrentIndex(i => i + 1)
+              else goToIndex(currentIndex + 1)
             }}
-            onPrev={() => setCurrentIndex(i => Math.max(0, i - 1))}
-            onSkip={() => setCurrentIndex(i => Math.min(questions.length - 1, i + 1))}
+            onPrev={() => goToIndex(Math.max(0, currentIndex - 1))}
+            onSkip={() => goToIndex(Math.min(questions.length - 1, currentIndex + 1))}
             isFirst={currentIndex === 0}
             isLast={currentIndex === questions.length - 1}
           />

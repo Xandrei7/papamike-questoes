@@ -16,15 +16,11 @@ export function parseQuestionsText(rawText: string): ParsedQuestion[] {
   const gabaritoRegex = /GABARITO\s*COMENTADO/i
   const splitIndex = rawText.search(gabaritoRegex)
 
-  if (splitIndex === -1) {
-    return parseQuestionsSection(rawText).map(q => ({ ...q, correctAnswer: '', comment: '' }))
-  }
-
-  const questionsText = rawText.slice(0, splitIndex)
-  const gabaritoText = rawText.slice(splitIndex)
+  const questionsText = splitIndex >= 0 ? rawText.slice(0, splitIndex) : rawText
+  const gabaritoText = splitIndex >= 0 ? rawText.slice(splitIndex) : ''
 
   const questionMap = parseQuestionsSection(questionsText)
-  const answerMap = parseGabaritoSection(gabaritoText)
+  const answerMap = gabaritoText ? parseGabaritoSection(gabaritoText) : {}
 
   return questionMap
     .sort((a, b) => a.number - b.number)
@@ -36,8 +32,14 @@ export function parseQuestionsText(rawText: string): ParsedQuestion[] {
 }
 
 function parseQuestionsSection(text: string) {
-  // Match lines that are just a number with . or ) — e.g. "1." or "1)" or "1. "
-  const questionStartRegex = /^[ \t]*(\d+)[.)]\s*$/gm
+  // KEY FIX: old regex had $ at the end, requiring the number to be ALONE on
+  // the line (e.g. "1." by itself). This broke the common format "1. Enunciado"
+  // where number and text are on the same line.
+  //
+  // New regex: matches "1." or "1)" at the very start of a line (no leading
+  // whitespace), followed by optional space. Text can follow on the same line.
+  const questionStartRegex = /^(\d+)[.)]\s*/gm
+
   const matches = [...text.matchAll(questionStartRegex)]
 
   const results: Omit<ParsedQuestion, 'correctAnswer' | 'comment'>[] = []
@@ -47,15 +49,20 @@ function parseQuestionsSection(text: string) {
     const nextMatch = matches[i + 1]
     const number = parseInt(match[1])
 
+    // Block starts right after "1. " — so any text on that same line is included
     const blockStart = (match.index ?? 0) + match[0].length
     const blockEnd = nextMatch?.index ?? text.length
     const blockText = text.slice(blockStart, blockEnd)
 
     const { statement, options } = parseQuestionBlock(blockText)
 
+    // Skip if no statement detected (avoids false positives on stray numbers)
+    if (!statement.trim()) continue
+
     const isTrueFalse =
       options.length === 0 ||
-      (options.length === 2 && options.every(o => ['C', 'E'].includes(o.letter)))
+      (options.length === 2 &&
+        options.every(o => ['C', 'E'].includes(o.letter.toUpperCase())))
 
     results.push({
       number,
@@ -74,7 +81,7 @@ function parseQuestionBlock(text: string) {
     .map(l => l.trim())
     .filter(l => l.length > 0)
 
-  // Option lines: start with a single letter followed by )
+  // Option line: starts with a single letter a-e followed by ) then text
   const optionPattern = /^([a-eA-E])\)\s*(.+)/
 
   const firstOptIdx = lines.findIndex(l => optionPattern.test(l))
@@ -89,14 +96,16 @@ function parseQuestionBlock(text: string) {
     })
     .filter(Boolean) as ParsedOption[]
 
-  return {
-    statement: statementLines.join(' ').replace(/\s+/g, ' ').trim(),
-    options,
-  }
+  const statement = statementLines
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return { statement, options }
 }
 
 function parseGabaritoSection(text: string): Record<number, { letter: string; comment: string }> {
-  // Match lines like "1. C" or "1) C"
+  // Matches lines like "1. B" or "1) B" or "1. E" — letter must be alone on line
   const answerLineRegex = /^[ \t]*(\d+)[.)]\s+([A-Ea-e])\s*$/gm
   const matches = [...text.matchAll(answerLineRegex)]
 
@@ -115,6 +124,7 @@ function parseGabaritoSection(text: string): Record<number, { letter: string; co
       .slice(commentStart, commentEnd)
       .replace(/^\s+/, '')
       .replace(/\s+$/, '')
+      .trim()
 
     map[number] = { letter, comment }
   }
