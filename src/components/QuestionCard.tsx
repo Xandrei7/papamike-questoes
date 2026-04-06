@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Heart, Flag, ChevronDown, ChevronUp, Bookmark, Lightbulb } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -40,6 +40,18 @@ export function QuestionCard({
   const [commentOpen, setCommentOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [reportText, setReportText] = useState('')
+
+  // Reset all state whenever the question changes.
+  // This is the definitive fix: even if React reuses the component instance
+  // (e.g., key prop not triggering remount), the state is always correct.
+  useEffect(() => {
+    setSelected(existingAnswer?.selectedAnswer ?? null)
+    setSubmitted(!!existingAnswer)
+    setCommentOpen(false)
+    setReportOpen(false)
+    setReportText('')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question.id])
 
   const answered = submitted
   const isCorrect = selected === question.correct_answer
