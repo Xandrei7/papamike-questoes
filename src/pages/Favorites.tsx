@@ -40,6 +40,7 @@ export function Favorites() {
           </div>
         ) : currentQuestion ? (
           <QuestionCard
+            key={currentQuestion.id}
             question={currentQuestion}
             questionNumber={currentIndex + 1}
             totalQuestions={questions.length}

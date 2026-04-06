@@ -171,6 +171,7 @@ export function StudyMode() {
       <Header title={title} showBack />
       <main className="mx-auto w-full max-w-lg flex-1 px-4 py-4 pb-8">
         <QuestionCard
+          key={currentQuestion.id}
           question={currentQuestion}
           questionNumber={currentIndex + 1}
           totalQuestions={questions.length}
