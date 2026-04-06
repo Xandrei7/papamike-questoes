@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, CheckCircle2, Upload } from 'lucide-react'
+import { ChevronRight, CheckCircle2, Upload, Timer } from 'lucide-react'
 import { Header } from '@/components/Header'
 import { BottomNav } from '@/components/BottomNav'
 import { ProgressBar } from '@/components/ProgressBar'
 import { getDisciplines, getSubjects, getQuestions } from '@/lib/dataService'
 import { useStudy } from '@/contexts/StudyContext'
+import { useAuth } from '@/contexts/AuthContext'
 import type { Discipline, Subject, Question } from '@/types'
 
 interface DisciplineCard {
@@ -16,6 +17,7 @@ interface DisciplineCard {
 
 export function Home() {
   const navigate = useNavigate()
+  const { isAdmin } = useAuth()
   const { answers } = useStudy()
   const [cards, setCards] = useState<DisciplineCard[]>([])
   const [loading, setLoading] = useState(true)
@@ -56,17 +58,32 @@ export function Home() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {/* Import button — always visible */}
+            {/* Simulado button — always visible */}
             <button
-              onClick={() => navigate('/import')}
-              className="flex items-center gap-3 rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 px-4 py-3 text-left hover:border-primary hover:bg-primary/10 transition-all"
+              onClick={() => navigate('/simulado')}
+              className="flex items-center gap-3 rounded-xl border-2 border-primary bg-primary/5 px-4 py-3 text-left hover:bg-primary/10 transition-all"
             >
-              <Upload size={18} className="text-primary shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-primary">Importar questões</p>
-                <p className="text-xs text-muted-foreground">Cole questões + gabarito comentado</p>
+              <Timer size={18} className="text-primary shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-primary">Fazer Simulado</p>
+                <p className="text-xs text-muted-foreground">Questões cronometradas sem gabarito — condição real de prova</p>
               </div>
+              <ChevronRight size={16} className="text-primary shrink-0" />
             </button>
+
+            {/* Import button — admin only */}
+            {isAdmin && (
+              <button
+                onClick={() => navigate('/import')}
+                className="flex items-center gap-3 rounded-xl border-2 border-dashed border-primary/50 bg-primary/5 px-4 py-3 text-left hover:border-primary hover:bg-primary/10 transition-all"
+              >
+                <Upload size={18} className="text-primary shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-primary">Importar questões</p>
+                  <p className="text-xs text-muted-foreground">Cole questões + gabarito comentado</p>
+                </div>
+              </button>
+            )}
 
             {cards.length === 0 ? (
               <p className="py-8 text-center text-muted-foreground text-sm">
