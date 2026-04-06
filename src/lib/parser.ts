@@ -105,8 +105,9 @@ function parseQuestionBlock(text: string) {
 }
 
 function parseGabaritoSection(text: string): Record<number, { letter: string; comment: string }> {
-  // Matches lines like "1. B" or "1) B" or "1. E" — letter must be alone on line
-  const answerLineRegex = /^[ \t]*(\d+)[.)]\s+([A-Ea-e])\s*$/gm
+  // Matches "1. C" (alone) or "1. C Comment..." (same line).
+  // \b ensures the letter is standalone — won't match "1. Cada..." (no boundary between C and a).
+  const answerLineRegex = /^[ \t]*(\d+)[.)]\s+([A-Ea-e])\b/gm
   const matches = [...text.matchAll(answerLineRegex)]
 
   const map: Record<number, { letter: string; comment: string }> = {}
