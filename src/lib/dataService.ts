@@ -108,21 +108,50 @@ export async function getProfiles(): Promise<Profile[]> {
   return data ?? []
 }
 
-export async function updateValidation(email: string, validated: boolean) {
-  const { error } = await supabase.from('profiles').update({ is_validated: validated }).eq('email', email)
+export async function updateUserStatus(userId: string, newStatus: 'pending' | 'approved' | 'suspended' | 'revoked') {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ 
+      status: newStatus,
+      is_validated: newStatus === 'approved' // Sincroniza retrocompatibilidade se a DB antiga estiver em uso
+    })
+    .eq('user_id', userId)
   if (error) throw error
+}
+
+export async function forceCreateProfileFallback(user: { id: string; email: string; name?: string }, status: string, role: string) {
+  // Chamada de emergência pelo AuthContext caso trigger DB falhe
+  await supabase.from('profiles').upsert({
+    user_id: user.id,
+    email: user.email,
+    name: user.name || user.email.split('@')[0],
+    status: status,
+    role: role,
+    is_validated: status === 'approved'
+  }, { onConflict: 'user_id' })
 }
 
 // ─── ROLES ───────────────────────────────────────────────────────────────────
 
 export async function checkAdminRole(userId: string): Promise<boolean> {
-  const { data } = await supabase
+  // Check user_roles table first
+  const { data: roleData } = await supabase
     .from('user_roles')
     .select('role')
     .eq('user_id', userId)
     .eq('role', 'admin')
     .single()
-  return !!data
+  
+  if (roleData) return true
+  
+  // Fallback check profile role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('user_id', userId)
+    .single()
+    
+  return profile?.role === 'admin'
 }
 
 // ─── REPORTS ─────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import {
   getDisciplines, saveDiscipline, deleteDiscipline,
   getSubjects, saveSubject, deleteSubject,
   getQuestions, saveQuestion, deleteQuestion,
-  getProfiles, updateValidation, getReports,
+  getProfiles, updateUserStatus, getReports,
 } from '@/lib/dataService'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -317,33 +317,77 @@ export function Admin() {
                 <p className="text-xs text-muted-foreground">Total</p>
               </div>
               <div className="rounded-xl border border-border bg-card p-3 text-center">
-                <p className="text-xl font-bold text-green-500">{profiles.filter(p=>p.is_validated).length}</p>
+                <p className="text-xl font-bold text-green-500">
+                  {profiles.filter(p => p.status === 'approved' || p.is_validated).length}
+                </p>
                 <p className="text-xs text-muted-foreground">Com acesso</p>
               </div>
               <div className="rounded-xl border border-border bg-card p-3 text-center">
-                <p className="text-xl font-bold text-amber-500">{profiles.filter(p=>!p.is_validated).length}</p>
+                <p className="text-xl font-bold text-amber-500">
+                  {profiles.filter(p => p.status === 'pending' || (!p.is_validated && p.status !== 'suspended')).length}
+                </p>
                 <p className="text-xs text-muted-foreground">Pendentes</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card p-3 text-center">
+                <p className="text-xl font-bold text-red-500">
+                  {profiles.filter(p => p.status === 'suspended').length}
+                </p>
+                <p className="text-xs text-muted-foreground">Suspensos</p>
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              {profiles.map(p => (
-                <div key={p.user_id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{p.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{p.email}</p>
+              {profiles.map(p => {
+                const isApproved = p.status === 'approved' || p.is_validated
+                const isPending = p.status === 'pending' || (!p.is_validated && p.status !== 'suspended')
+                return (
+                  <div key={p.user_id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{p.name || p.email.split('@')[0]}</p>
+                      <p className="text-xs text-muted-foreground truncate">{p.email}</p>
+                    </div>
+                    
+                    {/* Badge de Status */}
+                    <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium shrink-0', 
+                      isApproved ? 'bg-green-100 text-green-700' : 
+                      isPending ? 'bg-amber-100 text-amber-700' : 
+                      'bg-red-100 text-red-700'
+                    )}>
+                      {isApproved ? 'Aprovado' : isPending ? 'Pendente' : 'Suspenso'}
+                    </span>
+                    
+                    {/* Botões de Ação */}
+                    <div className="flex gap-1">
+                      {isPending && (
+                        <button
+                          onClick={async () => { await updateUserStatus(p.user_id, 'approved'); await loadAll(); toast.success('Acesso liberado!'); }}
+                          className="p-1.5 rounded-md shrink-0 text-green-500 hover:bg-green-50"
+                          title="Liberar acesso"
+                        >
+                          <Check size={16}/>
+                        </button>
+                      )}
+                      {(isApproved || isPending) && (
+                        <button
+                          onClick={async () => { if(confirm('Quer mesmo suspender este usuário?')) { await updateUserStatus(p.user_id, 'suspended'); await loadAll(); toast.warning('Acesso revogado.'); } }}
+                          className="p-1.5 rounded-md shrink-0 text-red-500 hover:bg-red-50"
+                          title="Suspender acesso"
+                        >
+                          <X size={16}/>
+                        </button>
+                      )}
+                      {p.status === 'suspended' && (
+                        <button
+                          onClick={async () => { await updateUserStatus(p.user_id, 'pending'); await loadAll(); toast.info('Enviado para pendentes'); }}
+                          className="p-1.5 rounded-md shrink-0 text-amber-500 hover:bg-amber-50 text-xs font-medium"
+                          title="Voltar para Pendentes"
+                        >
+                          Restaurar
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium shrink-0', p.is_validated ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
-                    {p.is_validated ? 'Validado' : 'Pendente'}
-                  </span>
-                  <button
-                    onClick={async () => { await updateValidation(p.email, !p.is_validated); await loadAll() }}
-                    className={cn('p-1.5 rounded-md shrink-0', p.is_validated ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50')}
-                    title={p.is_validated ? 'Revogar acesso' : 'Liberar acesso'}
-                  >
-                    {p.is_validated ? <X size={15}/> : <Check size={15}/>}
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}

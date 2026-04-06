@@ -25,24 +25,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  async function loadProfile(userId: string) {
-    const { data } = await supabase.from('profiles').select('*').eq('user_id', userId).single()
-    if (data) setProfile(data as Profile)
+  async function loadProfile(currentUser: User) {
+    const userId = currentUser.id
+    const normalizedEmail = currentUser.email?.trim().toLowerCase() || ''
+    
+    // HARDCODED ADMIN CHECK (Bulletproof)
+    const isHardcodedAdmin = normalizedEmail === 'alexandregoncalvespmrr@gmail.com'
 
-    let admin = await checkAdminRole(userId)
+    let { data } = await supabase.from('profiles').select('*').eq('user_id', userId).single()
 
-    // Auto-admin: if no admins exist yet, promote this user automatically
+    // Auto-create profile fallback if trigger failed
+    if (!data) {
+      const defaultStatus = isHardcodedAdmin ? 'approved' : 'pending'
+      const defaultRole = isHardcodedAdmin ? 'admin' : 'user'
+      try {
+        const { forceCreateProfileFallback } = await import('@/lib/dataService')
+        await forceCreateProfileFallback({ id: currentUser.id, email: normalizedEmail, name: currentUser.user_metadata?.name }, defaultStatus, defaultRole)
+        const { data: newData } = await supabase.from('profiles').select('*').eq('user_id', userId).single()
+        data = newData
+      } catch (e) {
+        console.error('Migration pendente ou erro:', e)
+        // Mock fallback if DB structure is missing to unblock UI
+        data = { 
+          user_id: userId, 
+          email: normalizedEmail, 
+          name: currentUser.user_metadata?.name || normalizedEmail.split('@')[0], 
+          is_validated: isHardcodedAdmin, 
+          status: defaultStatus, 
+          role: defaultRole,
+          created_at: new Date().toISOString()
+        }
+      }
+    }
+
+    if (data) {
+      // Problema 4: Usuário suspenso tentando acessar volta para pendente
+      if (data.status === 'suspended' || data.status === 'revoked') {
+         try {
+           const { updateUserStatus } = await import('@/lib/dataService')
+           await updateUserStatus(userId, 'pending')
+           data.status = 'pending'
+           data.is_validated = false
+         } catch(e) {
+           console.error('Erro ao repassar suspenso para pendente. Execute a SQL de migration!', e)
+         }
+      }
+      setProfile(data as Profile)
+    }
+
+    let admin = isHardcodedAdmin
     if (!admin) {
-      const { count } = await supabase
-        .from('user_roles')
-        .select('*', { count: 'exact', head: true })
-        .eq('role', 'admin')
-
-      if (count === 0) {
-        const { error } = await supabase
+      admin = await checkAdminRole(userId)
+      // Auto-admin: if no admins exist yet, promote this user automatically
+      if (!admin) {
+        const { count } = await supabase
           .from('user_roles')
-          .insert({ user_id: userId, role: 'admin' })
-        if (!error) admin = true
+          .select('*', { count: 'exact', head: true })
+          .eq('role', 'admin')
+
+        if (count === 0) {
+          const { error } = await supabase.from('user_roles').insert({ user_id: userId, role: 'admin' })
+          if (!error) admin = true
+        }
       }
     }
 
@@ -54,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        loadProfile(session.user.id).finally(() => setLoading(false))
+        loadProfile(session.user).finally(() => setLoading(false))
       } else {
         setLoading(false)
       }
@@ -64,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        loadProfile(session.user.id)
+        loadProfile(session.user)
       } else {
         setProfile(null)
         setIsAdmin(false)
@@ -75,13 +119,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password })
     if (error) throw error
   }
 
   async function signUp(name: string, email: string, password: string) {
     const { error } = await supabase.auth.signUp({
-      email,
+      email: email.trim().toLowerCase(),
       password,
       options: { data: { name } },
     })
@@ -92,7 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
   }
 
-  const isValidated = profile?.is_validated === true || isAdmin
+  // Permite o acesso se o status for explicitamente 'approved', ou o admin hardcoded, ou a retrocompatibilidade is_validated
+  const isValidated = isAdmin || profile?.status === 'approved' || profile?.is_validated === true
 
   return (
     <AuthContext.Provider value={{ user, session, profile, isAdmin, isValidated, loading, signIn, signUp, signOut }}>

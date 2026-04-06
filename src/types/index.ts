@@ -39,8 +39,12 @@ export interface Profile {
   user_id: string
   email: string
   name: string
-  is_validated: boolean
+  is_validated: boolean // Mantido temporariamente por compatibilidade
+  status: 'pending' | 'approved' | 'suspended' | 'revoked'
+  role: 'admin' | 'user'
   created_at: string
+  updated_at?: string
+  requested_access_at?: string
 }
 
 export interface UserAnswer {
